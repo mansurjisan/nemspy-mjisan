@@ -1,4 +1,4 @@
-# NEMSpy
+# UFS-NEMSpy
 
 [![tests](https://github.com/noaa-ocs-modeling/NEMSpy/workflows/tests/badge.svg)](https://github.com/noaa-ocs-modeling/NEMSpy/actions?query=workflow%3Atests)
 [![codecov](https://codecov.io/gh/noaa-ocs-modeling/nemspy/branch/master/graph/badge.svg?token=uyeRvhmBtD)](https://codecov.io/gh/noaa-ocs-modeling/nemspy)
@@ -8,29 +8,29 @@
 [![style](https://sourceforge.net/p/oitnb/code/ci/default/tree/_doc/_static/oitnb.svg?format=raw)](https://sourceforge.net/p/oitnb/code)
 [![documentation](https://readthedocs.org/projects/nemspy/badge/?version=latest)](https://nemspy.readthedocs.io/en/latest/?badge=latest)
 
-NEMSpy generates configuration files (`nems.configure`, `config.rc`, `model_configure`, `atm_namelist.rc`)
-for coupled modeling applications run with a compiled NEMS binary (not included).
+UFS-NEMSpy generates configuration files for both NEMS and UFS coupled modeling applications. For NEMS, it generates (`nems.configure`, `config.rc`, `model_configure`, `atm_namelist.rc`). For UFS, it generates (`ufs.configure` and related configuration files).
 
 ```shell
-pip install nemspy
+git clone --branch ufs-coastal https://github.com/mansurjisan/ufs-nemspy.git
+
+cd ufs-nemspy/
+
+pip install -e .
 ```
 
-NEMS implements
-the [National Unified Operational Prediction Capability (NUOPC)](https://www.earthsystemcog.org/projects/nuopc/), and
-configuration files built for NEMS will also work for most NUOPC applications.
+This branch extends NEMSpy to support both NEMS and UFS configurations. NEMS and UFS implement the [National Unified Operational Prediction Capability (NUOPC)](https://www.earthsystemcog.org/projects/nuopc/).
 
 Documentation can be found at https://nemspy.readthedocs.io
 
-## organization / responsibility
+## New Features
+- Support for UFS Coastal configurations
+- CMEPS mediator support
+- Flexible coupling configurations (OCN-only, ATM-OCN, ATM-OCN-WAV)
+- UFS-compliant configuration file generation
 
-NEMSpy is developed by the [Coastal Marine Modeling Branch (CMMB)](https://coastaloceanmodels.noaa.gov) of the Office of Coast Survey (OCS), a part of the [National Oceanic and Atmospheric Administration (NOAA)](https://www.noaa.gov), an agency of the United States federal government.
+## Usage Examples
 
-- Zachary Burnett (**lead**) - zachary.burnett@noaa.gov
-- Saeed Moghimi - saeed.moghimi@noaa.gov
-- Jaime Calzada (past)
-
-## usage
-
+### Traditional NEMS Configuration
 ```python
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -38,134 +38,179 @@ from pathlib import Path
 from nemspy import ModelingSystem
 from nemspy.model import ADCIRCEntry, AtmosphericForcingEntry, WaveWatch3ForcingEntry
 
-# directory to which configuration files should be written
-output_directory = Path(__file__).parent / 'nems_configuration'
+# Original NEMS configuration example remains the same...
+```
 
-# directory containing forcings
-forcings_directory = Path(__file__).parent / 'forcings'
+### UFS Coastal Configuration
+```python
+from datetime import datetime, timedelta
+from nemspy import ModelingSystem
+from nemspy.model.base import UFSModelEntry, EntryType
 
-# model run time
+# Create modeling system
 start_time = datetime(2020, 6, 1)
-duration = timedelta(days=1)
-end_time = start_time + duration
-
-# returning interval of main run sequence
+end_time = start_time + timedelta(days=1)
 interval = timedelta(hours=1)
 
-# model entries
-ocean_model = ADCIRCEntry(processors=11, Verbosity='max', DumpFields=False)
-atmospheric_mesh = AtmosphericForcingEntry(
-    filename=forcings_directory / 'wind_atm_fin_ch_time_vec.nc', processors=1
-)
-wave_mesh = WaveWatch3ForcingEntry(
-    filename=forcings_directory / 'ww3.Constant.20151214_sxy_ike_date.nc', processors=1
-)
-
-# instantiate model system with model entries
 nems = ModelingSystem(
     start_time=start_time,
     end_time=end_time,
     interval=interval,
-    ocn=ocean_model,
-    atm=atmospheric_mesh,
-    wav=wave_mesh,
 )
 
-# form connections between models
-nems.connect('ATM', 'OCN')
-nems.connect('WAV', 'OCN')
+# Create UFS model entries
+med = UFSModelEntry(
+    name='cmeps',
+    model_type=EntryType.MEDIATOR,
+    petlist_bounds=(0, 7),
+    omp_num_threads=1,
+    ATM_model='datm',
+    OCN_model='schism',
+    WAV_model='ww3',
+    history_n=1,
+    history_option='nhours',
+    history_ymd=-999,
+    coupling_mode='coastal'
+)
 
-# define execution order
-nems.sequence = [
-    'ATM -> OCN',
-    'WAV -> OCN',
-    'ATM',
-    'WAV',
-    'OCN',
-]
+atm = UFSModelEntry(
+    name='datm',
+    model_type=EntryType.ATMOSPHERIC,
+    petlist_bounds=(0, 7),
+    omp_num_threads=1,
+    Verbosity=0,
+    DumpFields='false',
+    ProfileMemory='false',
+    OverwriteSlice='true'
+)
 
-# write configuration files to the given directory
-nems.write(directory=output_directory, overwrite=True, include_version=True)
+ocn = UFSModelEntry(
+    name='schism',
+    model_type=EntryType.OCEAN,
+    petlist_bounds=(8, 15),
+    omp_num_threads=1,
+    Verbosity=0,
+    DumpFields='false',
+    ProfileMemory='false',
+    OverwriteSlice='true',
+    meshloc='element',
+    CouplingConfig='none'
+)
 
+# Add models and set connections
+nems['MED'] = med
+nems['ATM'] = atm
+nems['OCN'] = ocn
+
+nems.connect('ATM', 'MED')
+nems.connect('OCN', 'MED')
+
+# Write UFS configuration
+nems.write_ufs_config(
+    directory='ufs_configuration',
+    coupling_mode='coastal',
+    history_n=1,
+    restart_n=12,
+    stop_n=120,
+    overwrite=True
+)
 ```
-
-## output
-
-### `nems.configure`
-
+## Output Examples
+### UFS Output
+#### `ufs.configure`
 ```fortran
-# `nems.configure` generated with NEMSpy 1.0.0
+
+#############################################
+####  NEMS Run-Time Configuration File  #####
+#############################################
+# ESMF #
+logKindFlag:            ESMF_LOGKIND_MULTI
+globalResourceControl:  true
 # EARTH #
-EARTH_component_list: ATM WAV OCN
+EARTH_component_list: ATM MED OCN
 EARTH_attributes::
-  Verbosity = off
+  Verbosity = 0
+::
+# MED #
+MED_model:                      cmeps
+MED_petlist_bounds:             0 7
+MED_omp_num_threads:            1
+MED_attributes::
+    ATM_model = datm
+    OCN_model = schism
+    history_n = 1
+    history_option = nhours
+    history_ymd = -999
+    coupling_mode = coastal
 ::
 
 # ATM #
-ATM_model:                      atmesh
-ATM_petlist_bounds:             0 0
+ATM_model:                      datm
+ATM_petlist_bounds:             0 7
+ATM_omp_num_threads:            1
 ATM_attributes::
-  Verbosity = off
-::
-
-# WAV #
-WAV_model:                      ww3data
-WAV_petlist_bounds:             1 1
-WAV_attributes::
-  Verbosity = off
+    Verbosity = 0
+    DumpFields = false
+    ProfileMemory = false
+    OverwriteSlice = true
 ::
 
 # OCN #
-OCN_model:                      adcirc
-OCN_petlist_bounds:             2 12
+OCN_model:                      schism
+OCN_petlist_bounds:             8 15
+OCN_omp_num_threads:            1
 OCN_attributes::
-  Verbosity = max
-  DumpFields = false
+    Verbosity = 0
+    DumpFields = false
+    ProfileMemory = false
+    OverwriteSlice = true
+    meshloc = element
+    CouplingConfig = none
 ::
 
 # Run Sequence #
 runSeq::
-  @3600
-    ATM -> OCN   :remapMethod=redist
-    WAV -> OCN   :remapMethod=redist
-    ATM
-    WAV
-    OCN
-  @
+@3600
+  MED med_phases_prep_atm
+  MED med_phases_prep_ocn_accum
+  MED med_phases_prep_ocn_avg
+  MED -> ATM :remapMethod=redist
+  MED -> OCN :remapMethod=redist
+  MED -> MED :remapMethod=redist
+  ATM
+  OCN
+  MED
+  ATM -> MED :remapMethod=redist
+  OCN -> MED :remapMethod=redist
+  MED -> MED :remapMethod=redist
+  MED med_phases_post_atm
+  MED med_phases_post_ocn
+  MED med_phases_post_med
+  MED med_phases_history_write
+  MED med_phases_restart_write
+@
+::
+ALLCOMP_attributes::
+  ScalarFieldCount = 3
+  ScalarFieldIdxGridNX = 1
+  ScalarFieldIdxGridNY = 2
+  ScalarFieldIdxNextSwCday = 3
+  ScalarFieldName = cpl_scalars
+  start_type = startup
+  restart_dir = RESTART/
+  case_name = ufs.cpld
+  restart_n = 12
+  restart_option = nhours
+  restart_ymd = -999
+  orb_eccen = 1.e36
+  orb_iyear = 2000
+  orb_iyear_align = 2000
+  orb_mode = fixed_year
+  orb_mvelp = 1.e36
+  orb_obliq = 1.e36
+  stop_n = 120
+  stop_option = nhours
+  stop_ymd = -999
 ::
 ```
 
-### `model_configure`
-
-```fortran
-# `model_configure` generated with NEMSpy 1.0.0
-total_member:            1
-print_esmf:              .true.
-namelist:                atm_namelist.rc
-PE_MEMBER01:             13
-start_year:              2020
-start_month:             6
-start_day:               1
-start_hour:              0
-start_minute:            0
-start_second:            0
-nhours_fcst:             24
-RUN_CONTINUE:            .false.
-ENS_SPS:                 .false.
-```
-
-### `config.rc`
-
-```fortran
-# `config.rc` generated with NEMSpy 1.0.0
- atm_dir: ~/forcings
- atm_nam: wind_atm_fin_ch_time_vec.nc
- wav_dir: ~/forcings
- wav_nam: ww3.Constant.20151214_sxy_ike_date.nc
-```
-
-## related projects
-
-- [NOAA-EMC/NEMS](https://github.com/NOAA-EMC/NEMS)
-- [esmf-org/esmf](https://github.com/esmf-org/esmf)
-- [noaa-ocs-modeling/ADC-WW3-NWM-NEMS](https://github.com/noaa-ocs-modeling/ADC-WW3-NWM-NEMS)
