@@ -1,5 +1,6 @@
 import logging
 import os
+from datetime import datetime
 from os import PathLike
 from pathlib import Path
 import shutil
@@ -46,3 +47,32 @@ def create_symlink(
 
     if starting_directory is not None:
         os.chdir(starting_directory)
+
+def parse_datetime(value: str) -> datetime:
+    """
+    parse datetime from string
+
+    :param value: datetime string
+    :return: parsed datetime object
+    """
+    try:
+        # Try different datetime formats
+        formats = [
+            '%Y-%m-%d %H:%M:%S',
+            '%Y-%m-%d %H:%M',
+            '%Y-%m-%d',
+            '%Y%m%d %H:%M:%S',
+            '%Y%m%d %H:%M',
+            '%Y%m%d'
+        ]
+        
+        for fmt in formats:
+            try:
+                return datetime.strptime(value, fmt)
+            except ValueError:
+                continue
+                
+        raise ValueError(f"time data '{value}' does not match any known format")
+    except Exception as e:
+        raise ValueError(f"Failed to parse datetime from '{value}': {str(e)}")
+

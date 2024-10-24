@@ -3,8 +3,6 @@ from os import PathLike
 from pathlib import Path
 from typing import Dict, List
 
-import typepigeon as typepigeon
-
 from nemspy.configuration import (
     ConfigurationFile,
     ensure_directory,
@@ -12,6 +10,7 @@ from nemspy.configuration import (
     ModelConfigurationFile,
     NEMSConfigurationFile,
     RunSequence,
+    UFSConfigurationFile,
 )
 from nemspy.model.base import (
     ConnectionEntry,
@@ -19,8 +18,11 @@ from nemspy.model.base import (
     GridRemapMethod,
     MediationEntry,
     ModelEntry,
+    UFSModelEntry,
 )
 
+
+from nemspy.utilities import parse_datetime
 
 class ModelingSystem:
     """
@@ -107,11 +109,13 @@ class ModelingSystem:
 
     @start_time.setter
     def start_time(self, start_time: datetime):
-        start_time = typepigeon.convert_value(start_time, datetime)
+        if isinstance(start_time, str):
+            start_time = parse_datetime(start_time)
         self.__start_time = start_time
         if self.start_time > self.end_time:
             self.start_time = self.end_time
             self.end_time = start_time
+
 
     @property
     def end_time(self) -> datetime:
@@ -123,7 +127,8 @@ class ModelingSystem:
 
     @end_time.setter
     def end_time(self, end_time: datetime):
-        end_time = typepigeon.convert_value(end_time, datetime)
+        if isinstance(end_time, str):
+            end_time = parse_datetime(end_time)
         self.__end_time = end_time
         if self.end_time < self.start_time:
             self.end_time = self.start_time
@@ -368,6 +373,32 @@ class ModelingSystem:
             if isinstance(configuration_file, ModelConfigurationFile):
                 filenames.append(directory / 'atm_namelist.rc')
         return filenames
+
+    from nemspy.configuration.ufs import UFSConfigurationFile
+
+    #  ufs specific write_ufs_config method 
+    def write_ufs_config(
+        self, 
+        directory: PathLike, 
+        coupling_mode: str = 'coastal',
+        history_n: int = 1,
+        restart_n: int = 12,
+        stop_n: int = 120,
+        overwrite: bool = False
+    ) -> Path:
+        # Correct indentation for the body of the method
+        directory = ensure_directory(directory)
+        ufs_config = UFSConfigurationFile(
+            sequence=self.__sequence,
+            coupling_mode=coupling_mode,
+            history_n=history_n,
+            restart_n=restart_n,
+            stop_n=stop_n
+        )
+
+        # Return the path of the created UFS configuration file
+        return ufs_config.write(directory / 'ufs.configure', overwrite)
+
 
     def __getitem__(self, model_type: str) -> ModelEntry:
         if not isinstance(model_type, str) and not isinstance(model_type, EntryType):
