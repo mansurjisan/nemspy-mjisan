@@ -11,7 +11,7 @@
 UFS-NEMSpy generates configuration files for both NEMS and UFS coupled modeling applications. For NEMS, it generates (`nems.configure`, `config.rc`, `model_configure`, `atm_namelist.rc`). For UFS, it generates (`ufs.configure` and related configuration files).
 
 ```shell
-git clone --branch ufs-coastal https://github.com/mansurjisan/ufs-nemspy.git
+git clone --branch -b ufs-coastal-temp https://github.com/mansurjisan/ufs-nemspy.git
 
 cd ufs-nemspy/
 
@@ -37,83 +37,149 @@ from pathlib import Path
 
 from nemspy import ModelingSystem
 from nemspy.model import ADCIRCEntry, AtmosphericForcingEntry, WaveWatch3ForcingEntry
-
-# Original NEMS configuration example remains the same...
 ```
 
-### UFS Coastal Configuration
+### UFS Configuration for ATM OCN with Atmospheric Forcing Provided through CMEPS Mediator 
 ```python
 from datetime import datetime, timedelta
-from nemspy import ModelingSystem
-from nemspy.model.base import UFSModelEntry, EntryType
+import os
+import logging
 
-# Create modeling system
-start_time = datetime(2020, 6, 1)
-end_time = start_time + timedelta(days=1)
-interval = timedelta(hours=1)
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
-nems = ModelingSystem(
-    start_time=start_time,
-    end_time=end_time,
-    interval=interval,
-)
+def create_ufs_config():
+    logger.info("Starting UFS configuration test...")
 
-# Create UFS model entries
-med = UFSModelEntry(
-    name='cmeps',
-    model_type=EntryType.MEDIATOR,
-    petlist_bounds=(0, 7),
-    omp_num_threads=1,
-    ATM_model='datm',
-    OCN_model='schism',
-    WAV_model='ww3',
-    history_n=1,
-    history_option='nhours',
-    history_ymd=-999,
-    coupling_mode='coastal'
-)
+    try:
+        from nemspy import ModelingSystem
+        from nemspy.model.base import UFSModelEntry, EntryType
+        from nemspy.configuration import UFSModelConfigurationFile
+        logger.info("Successfully imported required modules")
 
-atm = UFSModelEntry(
-    name='datm',
-    model_type=EntryType.ATMOSPHERIC,
-    petlist_bounds=(0, 7),
-    omp_num_threads=1,
-    Verbosity=0,
-    DumpFields='false',
-    ProfileMemory='false',
-    OverwriteSlice='true'
-)
+        # Create ModelingSystem
+        start_time = datetime(2012, 10, 27)
+        end_time = start_time + timedelta(hours=56)
+        interval = timedelta(seconds=1800)
 
-ocn = UFSModelEntry(
-    name='schism',
-    model_type=EntryType.OCEAN,
-    petlist_bounds=(8, 15),
-    omp_num_threads=1,
-    Verbosity=0,
-    DumpFields='false',
-    ProfileMemory='false',
-    OverwriteSlice='true',
-    meshloc='element',
-    CouplingConfig='none'
-)
+        nems = ModelingSystem(
+            start_time=start_time,
+            end_time=end_time,
+            interval=interval,
+        )
+        logger.info("Created ModelingSystem successfully")
 
-# Add models and set connections
-nems['MED'] = med
-nems['ATM'] = atm
-nems['OCN'] = ocn
+        # Create mediator
+        med = UFSModelEntry(
+            name='cmeps',
+            model_type=EntryType.MEDIATOR,
+            petlist_bounds=(0, 319),
+            omp_num_threads=1,
+            ATM_model='datm',
+            OCN_model='schism',
+            history_n=1,
+            history_option='nhours',
+            history_ymd=-999,
+            coupling_mode='coastal',
+            pio_typename='PNETCDF',
+            pio_stride=8
+        )
+        logger.info("Created mediator entry")
 
-nems.connect('ATM', 'MED')
-nems.connect('OCN', 'MED')
+        # Create atmosphere model
+        atm = UFSModelEntry(
+            name='datm',
+            model_type=EntryType.ATMOSPHERIC,
+            petlist_bounds=(0, 159),
+            omp_num_threads=1,
+            Verbosity=0,
+            DumpFields='false',
+            ProfileMemory='false',
+            OverwriteSlice='true'
+        )
+        logger.info("Created atmosphere entry")
 
-# Write UFS configuration
-nems.write_ufs_config(
-    directory='ufs_configuration',
-    coupling_mode='coastal',
-    history_n=1,
-    restart_n=12,
-    stop_n=120,
-    overwrite=True
-)
+        # Create ocean model
+        ocn = UFSModelEntry(
+            name='schism',
+            model_type=EntryType.OCEAN,
+            petlist_bounds=(160, 319),
+            omp_num_threads=1,
+            Verbosity=0,
+            DumpFields='false',
+            ProfileMemory='false',
+            OverwriteSlice='true',
+            meshloc='element',
+            CouplingConfig='none'
+        )
+        logger.info("Created ocean entry")
+
+        # Add models to system
+        nems['MED'] = med
+        nems['ATM'] = atm
+        nems['OCN'] = ocn
+        logger.info("Added models to system")
+
+        # Set up connections
+        nems.connect('ATM', 'MED')
+        nems.connect('OCN', 'MED')
+        logger.info("Set up model connections")
+
+        # Create output directory
+        test_dir = 'test_ufs_output'
+        os.makedirs(test_dir, exist_ok=True)
+        logger.info(f"Created directory: {test_dir}")
+
+        # Write UFS configuration files
+        logger.info("Writing UFS configuration files...")
+
+        # Write ufs.configure
+        nems.write_ufs_config(
+            directory=test_dir,
+            coupling_mode='coastal',
+            history_n=1,
+            restart_n=12,
+            stop_n=56,
+            overwrite=True
+        )
+
+        # Write model_configure
+        model_config = UFSModelConfigurationFile(
+            start_time=start_time,
+            duration=end_time - start_time,
+            sequence=nems.sequence,  # Changed this line
+            dt_atmos=720,
+            quilting=True,
+            quilting_restart=False,
+            write_groups=1,
+            write_tasks_per_group=6,
+            itasks=1,
+            output_history=True,
+            imo=384,
+            jmo=190,
+            output_fh='12 -1'
+        )
+
+        model_config.write(os.path.join(test_dir, 'model_configure'), overwrite=True)
+        logger.info("Wrote model_configure file")
+
+        # Verify configurations
+        for filename in ['ufs.configure', 'model_configure']:
+            config_path = os.path.join(test_dir, filename)
+            if os.path.exists(config_path):
+                logger.info(f"Successfully created {filename} at {config_path}")
+                with open(config_path, 'r') as f:
+                    logger.info(f"{filename} preview:")
+                    print(f.read())
+            else:
+                logger.error(f"Failed to create {filename} at {config_path}")
+
+    except Exception as e:
+        logger.error(f"Error during configuration: {e}", exc_info=True)
+
+if __name__ == "__main__":
+    create_ufs_config()
+
 ```
 ## Output Examples
 ### UFS Output
@@ -121,7 +187,7 @@ nems.write_ufs_config(
 ```fortran
 
 #############################################
-####  NEMS Run-Time Configuration File  #####
+####  UFS Run-Time Configuration File  #####
 #############################################
 # ESMF #
 logKindFlag:            ESMF_LOGKIND_MULTI
@@ -133,7 +199,7 @@ EARTH_attributes::
 ::
 # MED #
 MED_model:                      cmeps
-MED_petlist_bounds:             0 7
+MED_petlist_bounds:             0 319
 MED_omp_num_threads:            1
 MED_attributes::
     ATM_model = datm
@@ -142,11 +208,13 @@ MED_attributes::
     history_option = nhours
     history_ymd = -999
     coupling_mode = coastal
+    pio_typename = PNETCDF
+    pio_stride = 8
 ::
 
 # ATM #
 ATM_model:                      datm
-ATM_petlist_bounds:             0 7
+ATM_petlist_bounds:             0 159
 ATM_omp_num_threads:            1
 ATM_attributes::
     Verbosity = 0
@@ -157,7 +225,7 @@ ATM_attributes::
 
 # OCN #
 OCN_model:                      schism
-OCN_petlist_bounds:             8 15
+OCN_petlist_bounds:             160 319
 OCN_omp_num_threads:            1
 OCN_attributes::
     Verbosity = 0
@@ -170,24 +238,18 @@ OCN_attributes::
 
 # Run Sequence #
 runSeq::
-@3600
+@1800
+  ATM -> MED :remapMethod=redist
+  MED med_phases_post_atm
+  OCN -> MED :remapMethod=redist
+  MED med_phases_post_ocn
   MED med_phases_prep_atm
   MED med_phases_prep_ocn_accum
   MED med_phases_prep_ocn_avg
   MED -> ATM :remapMethod=redist
   MED -> OCN :remapMethod=redist
-  MED -> MED :remapMethod=redist
   ATM
   OCN
-  MED
-  ATM -> MED :remapMethod=redist
-  OCN -> MED :remapMethod=redist
-  MED -> MED :remapMethod=redist
-  MED med_phases_post_atm
-  MED med_phases_post_ocn
-  MED med_phases_post_med
-  MED med_phases_history_write
-  MED med_phases_restart_write
 @
 ::
 ALLCOMP_attributes::
@@ -208,9 +270,50 @@ ALLCOMP_attributes::
   orb_mode = fixed_year
   orb_mvelp = 1.e36
   orb_obliq = 1.e36
-  stop_n = 120
+  stop_n = 56
   stop_option = nhours
   stop_ymd = -999
 ::
 ```
+#### `model_configure`
+```fortran
+start_year:              2012
+start_month:             10
+start_day:               27
+start_hour:              00
+start_minute:            0
+start_second:            0
+nhours_fcst:             56
+fhrot:                   0
+dt_atmos:                720
+restart_interval:        0
+quilting:                .true.
+quilting_restart:        .false.
+write_groups:            1
+write_tasks_per_group:   6
+itasks:                  1
+output_history:          .true.
+history_file_on_native_grid: .false.
+write_dopost:            .false.
+write_nsflip:            .false.
+num_files:               2
+filename_base:           atmmesh.
+output_grid:             'cubed_sphere_grid'
+output_file:             'netcdf'
+zstandard_level:         5
+ideflate:                0
+quantize_mode:           'quantize_bitround'
+quantize_nsd:            0
+ichunk2d:                0
+jchunk2d:                0
+ichunk3d:                0
+jchunk3d:                0
+kchunk3d:                0
+imo:                     384
+jmo:                     190
+output_fh:               12 -1
+iau_offset:              0
+```
+
+
 
