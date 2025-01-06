@@ -23,7 +23,7 @@ This branch extends NEMSpy to support both NEMS and UFS configurations. NEMS and
 Documentation can be found at https://nemspy.readthedocs.io
 
 ## New Features
-- Support for UFS Coastal configurations
+- Support for UFS Coastal configurations i.e. ufs.configure and model_configure
 - CMEPS mediator support
 - Flexible coupling configurations (OCN-only, ATM-OCN, ATM-OCN-WAV)
 - UFS-compliant configuration file generation
