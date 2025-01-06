@@ -283,7 +283,7 @@ class ModelingSystem:
         """
 
         return [str(connection) for connection in self.__sequence.connections]
-
+    
     def mediate(
         self,
         sources: List[str] = None,
@@ -344,6 +344,10 @@ class ModelingSystem:
             ModelConfigurationFile(self.start_time, self.duration, self.__sequence),
         ]
 
+    @property
+    def sequence(self):
+        return self.__sequence
+    
     @property
     def configuration(self) -> Dict[str, str]:
         return {

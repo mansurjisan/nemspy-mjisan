@@ -9,7 +9,7 @@ from .base import (
 )
 from .earth import Earth
 from .sequence import RunSequence
-from .ufs import UFSConfigurationFile
+from .ufs import UFSConfigurationFile, UFSModelConfigurationFile
 
 __all__ = [
     'ConfigurationFile',
@@ -19,5 +19,6 @@ __all__ = [
     'ModelConfigurationFile',
     'NEMSConfigurationFile',
     'RunSequence',
-    'UFSConfigurationFile'
+    'UFSConfigurationFile',
+    'UFSModelConfigurationFile'
 ]

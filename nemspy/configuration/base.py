@@ -176,6 +176,7 @@ class ModelConfigurationFile(ConfigurationFile):
             'ENS_SPS:                 .false.',
         ])
 
+    
 class NEMSConfigurationFile(ConfigurationFile):
     """
     ``nems.configure`` file, containing NEMS members, coupling connections, and run sequence information
